@@ -12,36 +12,57 @@ body {
   text-align: center;
 }
 
+/* BUCKET */
+.bucket {
+  width: 120px;
+  height: 200px;
+  border: 3px solid white;
+  border-radius: 10px;
+  margin: auto;
+  position: relative;
+  overflow: hidden;
+}
+
+.fill {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  height: 0%;
+  background: linear-gradient(to top, green, yellow, red);
+  transition: height 0.7s ease;
+}
+
+/* CARD */
 .card {
   background: #1e293b;
   margin: 20px;
   padding: 20px;
   border-radius: 20px;
+  display: inline-block;
+  width: 40%;
 }
 
-.bar {
+/* TABLE */
+table {
   width: 90%;
-  height: 25px;
-  background: #334155;
-  border-radius: 20px;
   margin: auto;
+  border-collapse: collapse;
+  margin-top: 30px;
 }
 
-.fill {
-  height: 25px;
-  border-radius: 20px;
-  background: linear-gradient(90deg, green, yellow, red);
-  width: 0%;
-  transition: 0.5s;
+th, td {
+  padding: 12px;
+  border-bottom: 1px solid #444;
 }
 
 button {
-  padding: 10px;
-  border-radius: 10px;
+  padding: 8px 12px;
   border: none;
+  border-radius: 10px;
   background: #22c55e;
   color: white;
 }
+
 </style>
 </head>
 
@@ -49,11 +70,21 @@ button {
 
 <h1>🗑 Smart Waste Dashboard</h1>
 
-<div id="container"></div>
+<div id="cards"></div>
+
+<h2>📊 Priority Collection Table</h2>
+<table id="table">
+  <tr>
+    <th>Rank</th>
+    <th>Dustbin</th>
+    <th>Level</th>
+    <th>Action</th>
+  </tr>
+</table>
 
 <script>
 
-// 🔥 MQTT CONNECT (YOUR CLOUD)
+// MQTT CONNECT
 const client = mqtt.connect("wss://0723a859e80346dca42e005efea66a3e.s1.eu.hivemq.cloud:8884/mqtt", {
   username: "hivemq.webclient.1774194227430",
   password: "2aR@4:Fv;I?kNzW8lA5n"
@@ -71,14 +102,11 @@ let bins = {
 };
 
 client.on("connect", () => {
-  console.log("MQTT Connected");
-
   client.subscribe("dustbin1/level");
   client.subscribe("dustbin2/level");
 });
 
 client.on("message", (topic, message) => {
-
   let value = parseInt(message.toString());
 
   if(topic === "dustbin1/level") bins["Dustbin 1"].level = value;
@@ -87,37 +115,56 @@ client.on("message", (topic, message) => {
   updateUI();
 });
 
-function updateUI()
-{
+function updateUI() {
+
   let arr = Object.entries(bins);
 
-  // 🔥 SORT HIGH → TOP
-  arr.sort((a,b) => b[1].level - a[1].level);
+  // 🔥 SORT (HIGH → TOP)
+  arr.sort((a,b)=>b[1].level - a[1].level);
 
-  let html = "";
+  /* ===== CARDS ===== */
+  let cardHTML = "";
 
   arr.forEach(([name,data]) => {
-
-    html += `
+    cardHTML += `
       <div class="card">
         <h2>${name}</h2>
-        <h3>${data.level}%</h3>
-
-        <div class="bar">
-          <div class="fill" style="width:${data.level}%"></div>
+        <div class="bucket">
+          <div class="fill" style="height:${data.level}%"></div>
         </div>
-
-        ${data.level >= 80 ? "<h3 style='color:red'>⚠ FULL</h3>" : ""}
-
-        <br>
-        <a href="${data.location}" target="_blank">
-          <button>📍 View Location</button>
-        </a>
+        <h3>${data.level}%</h3>
       </div>
     `;
   });
 
-  document.getElementById("container").innerHTML = html;
+  document.getElementById("cards").innerHTML = cardHTML;
+
+  /* ===== TABLE ===== */
+  let tableHTML = `
+    <tr>
+      <th>Rank</th>
+      <th>Dustbin</th>
+      <th>Level</th>
+      <th>Action</th>
+    </tr>
+  `;
+
+  arr.forEach(([name,data], index) => {
+    tableHTML += `
+      <tr>
+        <td>${index+1}</td>
+        <td>${name}</td>
+        <td>${data.level}%</td>
+        <td>
+          <a href="${data.location}" target="_blank">
+            <button>📍 View</button>
+          </a>
+        </td>
+      </tr>
+    `;
+  });
+
+  document.getElementById("table").innerHTML = tableHTML;
 }
 
 </script>
