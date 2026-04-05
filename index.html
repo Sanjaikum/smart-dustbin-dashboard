@@ -1,138 +1,97 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
-
-<style>
-body {
-  background: #0f172a;
-  color: white;
-  font-family: Arial;
-  text-align: center;
-}
-
-/* BUCKET */
-.bucket {
-  width: 120px;
-  height: 200px;
-  border: 3px solid white;
-  border-radius: 10px;
-  margin: auto;
-  position: relative;
-  overflow: hidden;
-}
-
-.fill {
-  position: absolute;
-  bottom: 0;
-  width: 100%;
-  height: 0%;
-  background: linear-gradient(to top, green, yellow, red);
-  transition: height 0.7s ease;
-}
-
-/* CARD */
-.card {
-  background: #1e293b;
-  margin: 20px;
-  padding: 20px;
-  border-radius: 20px;
-  display: inline-block;
-  width: 40%;
-}
-
-/* TABLE */
-table {
-  width: 90%;
-  margin: auto;
-  border-collapse: collapse;
-  margin-top: 30px;
-}
-
-th, td {
-  padding: 12px;
-  border-bottom: 1px solid #444;
-}
-
-button {
-  padding: 8px 12px;
-  border: none;
-  border-radius: 10px;
-  background: #22c55e;
-  color: white;
-}
-
-</style>
-</head>
-
-<body>
-
-<h1>🗑 Smart Waste Dashboard</h1>
-
-<div id="cards"></div>
-
-<h2>📊 Priority Collection Table</h2>
-<table id="table">
-  <tr>
-    <th>Rank</th>
-    <th>Dustbin</th>
-    <th>Level</th>
-    <th>Action</th>
-  </tr>
-</table>
-
 <script>
 
-// MQTT CONNECT
+// MQTT CONNECT (Auto reconnect + stable)
 const client = mqtt.connect("wss://0723a859e80346dca42e005efea66a3e.s1.eu.hivemq.cloud:8884/mqtt", {
   username: "hivemq.webclient.1775398960141",
-  password: "0Z.#C7p!oj3zA,vaBP9J"
+  password: "0Z.#C7p!oj3zA,vaBP9J",
+  reconnectPeriod: 2000,
+  connectTimeout: 4000
 });
 
+// BIN DATA
 let bins = {
   "Dustbin 1": {
     level: 0,
-    location: "https://maps.google.com/?q=11.6643,78.1460"
+    topic: "dustbin1/level",
+    location: "https://maps.google.com/?q=11.6643,78.1460",
+    status: "Offline"
   },
   "Dustbin 2": {
     level: 0,
-    location: "https://maps.google.com/?q=13.0827,80.2707"
+    topic: "dustbin2/level",
+    location: "https://maps.google.com/?q=13.0827,80.2707",
+    status: "Offline"
   }
 };
 
+// CONNECT
 client.on("connect", () => {
-  client.subscribe("dustbin1/level");
-  client.subscribe("dustbin2/level");
+  console.log("MQTT Connected ✅");
+
+  Object.values(bins).forEach(bin => {
+    client.subscribe(bin.topic);
+  });
 });
 
+// MESSAGE RECEIVE
 client.on("message", (topic, message) => {
+
   let value = parseInt(message.toString());
 
-  if(topic === "dustbin1/level") bins["Dustbin 1"].level = value;
-  if(topic === "dustbin2/level") bins["Dustbin 2"].level = value;
+  // ❌ Avoid invalid data
+  if (isNaN(value)) return;
+
+  // Clamp value 0-100
+  value = Math.max(0, Math.min(100, value));
+
+  // Update correct bin
+  Object.keys(bins).forEach(name => {
+    if (bins[name].topic === topic) {
+      bins[name].level = value;
+      bins[name].status = "Online";
+    }
+  });
 
   updateUI();
 });
 
+// CONNECTION STATUS
+client.on("offline", () => {
+  console.log("MQTT Offline ❌");
+  Object.keys(bins).forEach(name => bins[name].status = "Offline");
+  updateUI();
+});
+
+client.on("reconnect", () => {
+  console.log("Reconnecting...");
+});
+
+
+// UI UPDATE FUNCTION
 function updateUI() {
 
   let arr = Object.entries(bins);
 
-  // 🔥 SORT (HIGH → TOP)
+  // 🔥 SORT HIGH PRIORITY
   arr.sort((a,b)=>b[1].level - a[1].level);
 
   /* ===== CARDS ===== */
   let cardHTML = "";
 
   arr.forEach(([name,data]) => {
+
+    let color = data.level > 70 ? "red" : data.level > 40 ? "yellow" : "green";
+
     cardHTML += `
       <div class="card">
         <h2>${name}</h2>
+
         <div class="bucket">
-          <div class="fill" style="height:${data.level}%"></div>
+          <div class="fill" style="height:${data.level}%; background:${color}"></div>
         </div>
+
         <h3>${data.level}%</h3>
+        <p>Status: ${data.status}</p>
       </div>
     `;
   });
@@ -145,6 +104,7 @@ function updateUI() {
       <th>Rank</th>
       <th>Dustbin</th>
       <th>Level</th>
+      <th>Status</th>
       <th>Action</th>
     </tr>
   `;
@@ -155,6 +115,7 @@ function updateUI() {
         <td>${index+1}</td>
         <td>${name}</td>
         <td>${data.level}%</td>
+        <td>${data.status}</td>
         <td>
           <a href="${data.location}" target="_blank">
             <button>📍 View</button>
@@ -167,7 +128,7 @@ function updateUI() {
   document.getElementById("table").innerHTML = tableHTML;
 }
 
-</script>
+// INITIAL UI LOAD
+updateUI();
 
-</body>
-</html>
+</script>
